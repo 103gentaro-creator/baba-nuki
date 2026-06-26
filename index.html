@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>カジノ・ババ抜きデラックス</title>
+    <style>
+        /* --- 基本デザイン & レスポンシブ設定 --- */
+        :root {
+            --card-style: linear-gradient(135deg, #ff416c, #ff4b2b); /* デフォルトカード裏 */
+            --game-mat-style: transparent;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #111;
+            color: white;
+            overflow: hidden;
+            height: 100vh;
+            height: 100dvh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #app-container {
+            width: 100%;
+            max-width: 800px;
+            height: 100%;
+            max-height: 100%;
+            background: linear-gradient(135deg, #11998e, #38ef7d); /* ホーム等：常にマットDesign1で固定 */
+            position: relative;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            overflow: hidden;
+        }
+        
+        /* --- ゲーム盤面（プレイマット）の設定 --- */
+        #game-board {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            min-height: 480px;
+            background: var(--game-mat-style);
+            transition: background 0.5s, box-shadow 0.5s;
+        }
+
+        /* ネット共有用に相対パスへ修正 */
+        /* マット18: 成歩堂マット */
+        #game-board.mat-equipped-18 {
+            background-image: url('マット/成歩堂②.jpg') !important;
+            background-size: contain !important;
+            background-repeat: no-repeat !important;
+            background-position: center !important;
+            box-shadow: inset 0 0 0 6px #ffd700, 0 0 20px rgba(0,0,0,0.6);
+        }
+        /* マット19: 御剣マット */
+        #game-board.mat-equipped-19 {
+            background-image: url('マット/御剣.jpg') !important;
+            background-size: contain !important;
+            background-repeat: no-repeat !important;
+            background-position: center !important;
+            box-shadow: inset 0 0 0 6px #ffd700, 0 0 20px rgba(0,0,0,0.6);
+        }
+
+        /* トランプ裏18: 逆転『意義あり！』 */
+        .card.npc-card.card-equipped-18 {
+            background-image: url('トランプ/くらえ！.jpg') !important;
+            background-size: 100% 100% !important;
+            background-position: center !important;
+        }
+        /* トランプ裏19: 逆転『くらえ！』 */
+        .card.npc-card.card-equipped-19 {
+            background-image: url('トランプ/異議あり！.png') !important;
+            background-size: 100% 100% !important;
+            background-position: center !important;
+        }
+        
+        /* シャッフル時の画面揺れアニメーション */
+        .shake-anim { animation: shake 0.5s linear; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+
+        .screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+            backdrop-filter: blur(2px);
+        }
+        .active-screen { display: flex; }
+        
+        /* ボタンデザイン */
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #332200;
+            background: linear-gradient(to bottom, #ffe066, #fbc02d);
+            border: 1px solid #fbc02d;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #bc9500, 0 6px 10px rgba(0,0,0,0.4);
+            margin: 6px;
+            text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+            transition: all 0.1s;
+        }
+        button:active { transform: translateY(4px); box-shadow: 0 0 0 #bc9500, 0 2px 5px rgba(0,0,0,0.4); }
+
+        /* --- 各種画面レイアウト --- */
+        #home-screen h1 { font-size: 36px; margin-bottom: 25px; text-shadow: 3px 3px 5px #000; color: #fff; font-weight: 900; letter-spacing: 2px; }
+        .coin-display { font-size: 18px; font-weight: bold; color: #ffeb3b; background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 20px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.2); box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+
+        .sub-screen { background: rgba(0,0,0,0.88); z-index: 10; overflow-y: auto; justify-content: flex-start; }
+        .sub-screen h2 { margin: 25px 0; color: #ffd700; text-shadow: 0 2px 4px rgba(0,0,0,0.5); text-align: center; font-size: 24px; }
+        .setting-item { margin: 18px 0; width: 85%; display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 10px 15px; border-radius: 10px; }
+        .setting-item select { padding: 5px 10px; border-radius: 5px; background: #333; color: white; border: 1px solid #555; }
+        .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; width: 100%; max-height: 65%; overflow-y: auto; padding: 10px; }
+        .shop-item { background: #222; padding: 12px; border-radius: 8px; text-align: center; border: 2px solid #444; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .shop-item.equipped { border-color: #ffd700; background: #2a2510; }
+
+        .rule-container { width: 92%; max-height: 70%; overflow-y: auto; background: rgba(255,255,255,0.03); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1); }
+        .rule-section { margin-bottom: 18px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; }
+        .rule-section:last-child { border-bottom: none; }
+        .rule-title { font-size: 16px; color: #ffd700; font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; }
+        .rule-text { font-size: 13.5px; line-height: 1.6; color: #dddddd; }
+        .highlight-rule { color: #ffb300; font-weight: bold; }
+
+        /* --- ゲーム画面 --- */
+        #game-screen { overflow-y: auto; justify-content: flex-start; padding: 0; background: none; }
+        
+        .game-header { height: 50px; display: flex; justify-content: space-between; align-items: center; padding: 0 15px; background: rgba(0,0,0,0.4); border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; font-weight: bold; z-index: 5; }
+        
+        .npc-container { display: flex; justify-content: space-around; align-items: center; width: 100%; flex-grow: 1; padding: 10px 5px; z-index: 5; }
+        .player-area { background: rgba(0,0,0,0.35); border-radius: 10px; padding: 8px; text-align: center; min-width: 90px; font-size: 12px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 4px 10px rgba(0,0,0,0.3); font-weight: bold; color: #eee; }
+        .player-hand { display: flex; justify-content: center; height: 60px; margin-top: 8px; position: relative; }
+        
+        /* カード基本スタイル */
+        .card {
+            width: 48px; height: 64px;
+            background: linear-gradient(to bottom, #ffffff, #f5f5f5);
+            border-radius: 5px;
+            color: #111; 
+            display: flex; 
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: flex-start;
+            padding-top: 4px;
+            padding-left: 5px;
+            font-weight: 900; 
+            position: relative; 
+            margin-left: -22px;
+            box-shadow: 2px 2px 6px rgba(0,0,0,0.4), inset 0 0 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid #ccc;
+        }
+        .card:first-child { margin-left: 0; }
+        .card.card-red { color: #d32f2f; }
+        .card.card-black { color: #111; }
+        
+        /* ジョーカー */
+        .card.card-joker {
+            background-image: url('トランプ/ジョーカー.webp') !important;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            color: transparent !important;
+        }
+        
+        /* NPCカード裏面 */
+        .card.npc-card { 
+            background: var(--card-style); 
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: cover;
+            color: transparent !important; 
+            border: 1px solid rgba(255,255,255,0.3); 
+            box-shadow: 2px 2px 6px rgba(0,0,0,0.5); 
+        }
+        
+        .player-hand .card:hover { transform: translateY(-10px) scale(1.05); box-shadow: 4px 10px 15px rgba(0,0,0,0.5); cursor: pointer; z-index: 10; }
+        
+        .bottom-game-area { flex-shrink: 0; padding-bottom: 15px; background: rgba(0,0,0,0.25); border-top: 1px solid rgba(255,255,255,0.05); z-index: 5; }
+        #game-info-log { background: rgba(0,0,0,0.75); color: #fff; padding: 10px 15px; border-radius: 6px; text-align: center; margin: 8px auto; width: 92%; font-size: 13px; line-height: 1.4; min-height: 42px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.1); box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        #player-0-area { max-width: 480px; margin: 0 auto; background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.15); }
+        #player-0-hand .card { margin-left: -16px; }
+        #player-0-hand .card:first-child { margin-left: 0; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+
+    <div id="home-screen" class="screen active-screen">
+        <h1>トランプ★カジノ</h1>
+        <div class="coin-display">💰 所持コイン: <span id="home-coin-count">0</span> 枚</div>
+        <button onclick="openScreen('mode-screen')">ゲームスタート</button>
+        <button onclick="openScreen('rule-screen')">ルール説明</button>
+        <button onclick="openScreen('shop-screen')">ショップ</button>
+        <button onclick="openScreen('settings-screen')">設定</button>
+    </div>
+
+    <div id="mode-screen" class="screen sub-screen">
+        <h2>ゲームモード選択</h2>
+        <button onclick="startGame('baba')">通常のババ抜き</button>
+        <button onclick="startGame('shuffle-baba')">シャッフルババ抜き</button>
+        <button onclick="startGame('jiji')">通常のジジ抜き</button>
+        <button onclick="startGame('shuffle-jiji')">シャッフルジジ抜き</button>
+        <button onclick="openScreen('home-screen')" style="background:linear-gradient(to bottom, #999, #666); border-color:#666; box-shadow:0 4px 0 #444;">戻る</button>
+    </div>
+
+    <div id="rule-screen" class="screen sub-screen">
+        <h2>ルール説明</h2>
+        <div class="rule-container">
+            <div class="rule-section">
+                <div class="rule-title">🃏 通常のババ抜き</div>
+                <div class="rule-text">4名で対戦します。手札に同じ数字のペアがあれば自動で場に捨てていき、隣のプレイヤーから順にカードを1枚ずつ引いていきます。手札がすべて無くなったプレイヤーから勝ち抜けとなり、最後にジョーカー（ババ）を持っていたプレイヤーが負け（4位）となります。</div>
+            </div>
+            <div class="rule-section">
+                <div class="rule-title">🔄 シャッフルババ抜き</div>
+                <div class="rule-text">通常のババ抜きをベースに、【2ターンに1度、全プレイヤーの手札からランダムで1枚が回収され、シャッフル後に再配布される】という強力な特殊ルールが加わります。ババがどこへ行くか分からないスリリングな展開が楽しめます！</div>
+            </div>
+            <div class="rule-section">
+                <div class="rule-title">🕵️ 通常のジジ抜き</div>
+                <div class="rule-text">ジョーカーを使わず、最初に52枚のトランプからランダムな1枚（ジジ）を裏向きのまま除外してゲームを始めします。誰も正解を知らない「1枚余るカード」を最後まで持っていたプレイヤーが負けとなります。</div>
+            </div>
+            <div class="rule-section">
+                <div class="rule-title">🔄 シャッフルジジ抜き</div>
+                <div class="rule-text">ジジ抜きにシャッフルルールを追加したモードです。2ターンに1度、残っている全プレイヤーの手札から1枚ずつランダム回収・シャッフルして再配布されます。誰がどの数字を持っているかの記憶が狂わされる心理戦モードです！</div>
+            </div>
+        </div>
+        <button onclick="openScreen('home-screen')" style="background:linear-gradient(to bottom, #999, #666); border-color:#666; box-shadow:0 4px 0 #444;">戻る</button>
+    </div>
+
+    <div id="settings-screen" class="screen sub-screen">
+        <h2>設定</h2>
+        <div class="setting-item">
+            <span>BGM 音量</span>
+            <input type="range" id="volume-bgm" min="0" max="5" value="3" onchange="updateVolume()">
+        </div>
+        <div class="setting-item">
+            <span>効果音 音量</span>
+            <input type="range" id="volume-se" min="0" max="5" value="3" onchange="updateVolume()">
+        </div>
+        <div class="setting-item">
+            <span>使用トランプ</span>
+            <select id="select-card" onchange="equipItem('cards', this.value)"></select>
+        </div>
+        <div class="setting-item">
+            <span>使用プレイマット</span>
+            <select id="select-mat" onchange="equipItem('mats', this.value)"></select>
+        </div>
+        <button onclick="openScreen('home-screen')">閉じる</button>
+    </div>
+
+    <div id="shop-screen" class="screen sub-screen">
+        <h2>ショップ</h2>
+        <div class="coin-display">💰 所持コイン: <span id="shop-coin-count">0</span> 枚</div>
+        <div style="margin-bottom: 12px; display:flex; justify-content:center;">
+            <button onclick="renderShop('cards')" style="font-size:14px; padding:8px 15px;">トランプ裏面</button>
+            <button onclick="renderShop('mats')" style="font-size:14px; padding:8px 15px;">プレイマット</button>
+        </div>
+        <div class="shop-grid" id="shop-items-container"></div>
+        <button onclick="openScreen('home-screen')" style="background:linear-gradient(to bottom, #999, #666); border-color:#666; box-shadow:0 4px 0 #444; margin-top:15px;">戻る</button>
+    </div>
+
+    <div id="game-screen" class="screen">
+        <div id="game-board">
+            <div class="game-header">
+                <span id="game-mode-title">ババ抜き</span>
+                <span id="turn-counter">ターン: 1</span>
+                <button onclick="quitGame()" style="padding:6px 12px; font-size:12px; background:linear-gradient(to bottom, #ff5252, #e53935); border-color:#e53935; box-shadow:0 3px 0 #c62828;">ギブアップ</button>
+            </div>
+            
+            <div class="npc-container">
+                <div class="player-area" id="player-1-area">
+                    <div>NPC 1</div><div class="player-hand" id="player-1-hand"></div>
+                </div>
+                <div class="player-area" id="player-2-area">
+                    <div>NPC 2</div><div class="player-hand" id="player-2-hand"></div>
+                </div>
+                <div class="player-area" id="player-3-area">
+                    <div>NPC 3</div><div class="player-hand" id="player-3-hand"></div>
+                </div>
+            </div>
+
+            <div class="bottom-game-area">
+                <div id="game-info-log">ゲーム開始！あなたの番です。隣 of NPCからカードを引いてください。</div>
+                <div class="player-area" id="player-0-area">
+                    <div>あなた (Player)</div>
+                    <div class="player-hand" id="player-0-hand"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- 音源システム（相対パスへ修正） ---
+const audioCtx = { ctx: null, bgmVolume: 0.6, seVolume: 0.6 };
+let bgmAudio = null;
+
+function initAudio() { 
+    if (!audioCtx.ctx) { 
+        audioCtx.ctx = new (window.AudioContext || window.webkitAudioContext)(); 
+    } 
+    if (!bgmAudio) {
+        bgmAudio = new Audio('音源/Trust_Me_intro.mp3');
+        bgmAudio.loop = true;
+    }
+}
+
+function playSound(type) {
+    initAudio(); if (audioCtx.seVolume === 0 || !audioCtx.ctx) return;
+    const ctx = audioCtx.ctx; const now = ctx.currentTime;
+    if (type === 'seCard') {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'triangle';
+        osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(400, now + 0.15);
+        gain.gain.setValueAtTime(audioCtx.seVolume * 0.5, now); gain.gain.linearRampToValueAtTime(0, now + 0.15);
+        osc.connect(gain); gain.connect(ctx.destination); osc.start(now); osc.stop(now + 0.15);
+    } else if (type === 'seCoin') {
+        const osc1 = ctx.createOscillator(); const osc2 = ctx.createOscillator(); const gain = ctx.createGain();
+        osc1.frequency.setValueAtTime(987.77, now); osc2.frequency.setValueAtTime(1318.51, now + 0.08);
+        gain.gain.setValueAtTime(audioCtx.seVolume * 0.3, now); gain.gain.linearRampToValueAtTime(0, now + 0.3);
+        osc1.connect(gain); osc2.connect(gain); gain.connect(ctx.destination);
+        osc1.start(now); osc1.stop(now + 0.3); osc2.start(now + 0.08); osc2.stop(now + 0.3);
+    } else if (type === 'seRank1') { playTone(523.25, 0.1, 0); playTone(659.25, 0.1, 0.1); playTone(783.99, 0.1, 0.2); playTone(1046.50, 0.4, 0.3); }
+    else if (type === 'seRank23') { playTone(523.25, 0.1, 0); playTone(659.25, 0.1, 0.1); playTone(783.99, 0.3, 0.2); }
+    else if (type === 'seRank4') { playTone(293.66, 0.2, 0); playTone(277.18, 0.2, 0.2); playTone(261.63, 0.5, 0.4); }
+}
+
+function playTone(freq, duration, delay) {
+    const ctx = audioCtx.ctx; const now = ctx.currentTime + delay; const osc = ctx.createOscillator(); const gain = ctx.createGain();
+    osc.frequency.setValueAtTime(freq, now); gain.gain.setValueAtTime(audioCtx.seVolume * 0.2, now); gain.gain.linearRampToValueAtTime(0, now + duration);
+    osc.connect(gain); gain.connect(ctx.destination); osc.start(now); osc.stop(now + duration);
+}
+
+function startBGM() {
+    initAudio();
+    if (audioCtx.bgmVolume > 0) {
+        bgmAudio.volume = audioCtx.bgmVolume;
+        bgmAudio.play().catch(e => console.log("再生ブロック待機"));
+    } else {
+        bgmAudio.pause();
+    }
+}
+
+// --- セーブデータ構造 ---
+let userData = { coins: 0, equippedCard: 0, equippedMat: 0, unlockedCards: [0], unlockedMats: [0], bgmVol: 3, seVol: 3 };
+
+const shopItems = {
+    cards: Array.from({length: 20}, (_, i) => {
+        let colors = ["#ff416c, #ff4b2b", "#1f4068, #162447", "#11998e, #38ef7d", "#0f2027, #203a43", "#f12711, #f5af19", "#8a2387, #e94057", "#00c6ff, #0072ff", "#fbc7d4, #9796f0", "#3a1c1c, #dd1818", "#1d976c, #93f9b9"][i%10];
+        let price = i===0 ? 0 : (i >= 18 ? 200 : 100);
+        return { 
+            id: i, 
+            name: i===18 ? "逆転『意義あり！』" : i===19 ? "逆転『くらえ！』" : `トランプ Design ${i+1}`, 
+            price: price, 
+            style: `linear-gradient(135deg, ${colors})`,
+            isImage: (i === 18 || i === 19)
+        };
+    }),
+    mats: Array.from({length: 20}, (_, i) => {
+        let colors = ["#11998e, #38ef7d", "#4a154b, #6c1d74", "#2c3e50, #3498db", "#16a085, #1abc9c", "#3e5151, #decba4", "#bac8e0, #6a85b6", "#434343, #000000", "#654ea3, #eaafc8", "#ed4264, #ffedbc", "#232526, #414345"][i%10];
+        let price = i===0 ? 0 : (i >= 18 ? 300 : 150);
+        return { 
+            id: i, 
+            name: i===18 ? "成歩堂マット" : i===19 ? "御剣マット" : `マット Design ${i+1}`, 
+            price: price, 
+            style: `linear-gradient(135deg, ${colors})`,
+            isImage: (i === 18 || i === 19)
+        };
+    })
+};
+
+function initApp() {
+    const saved = localStorage.getItem('casino_baba_data'); if (saved) userData = JSON.parse(saved);
+    document.getElementById('volume-bgm').value = userData.bgmVol; document.getElementById('volume-se').value = userData.seVol;
+    updateVolume(); populateSettingsSelects(); applyEquippedStyles(); updateCoinDisplays();
+    document.body.addEventListener('click', () => { startBGM(); }, { once: true });
+}
+function saveData() { localStorage.setItem('casino_baba_data', JSON.stringify(userData)); updateCoinDisplays(); }
+function updateCoinDisplays() { document.getElementById('home-coin-count').innerText = userData.coins; document.getElementById('shop-coin-count').innerText = userData.coins; }
+
+function openScreen(screenId) { 
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen')); 
+    document.getElementById(screenId).classList.add('active-screen'); 
+    if(screenId === 'shop-screen') renderShop(currentShopTab || 'cards');
+}
+
+function updateVolume() { 
+    userData.bgmVol = parseInt(document.getElementById('volume-bgm').value); 
+    userData.seVol = parseInt(document.getElementById('volume-se').value); 
+    audioCtx.bgmVolume = userData.bgmVol / 5; 
+    audioCtx.seVolume = userData.seVol / 5; 
+    saveData(); 
+    if (bgmAudio) {
+        bgmAudio.volume = audioCtx.bgmVolume;
+        if(audioCtx.bgmVolume === 0) bgmAudio.pause(); else bgmAudio.play().catch(() => {});
+    }
+}
+
+function applyEquippedStyles() { 
+    const gameBoard = document.getElementById('game-board');
+    const card = shopItems.cards.find(item => item.id === userData.equippedCard); 
+    const mat = shopItems.mats.find(item => item.id === userData.equippedMat); 
+    
+    gameBoard.classList.remove('mat-equipped-18', 'mat-equipped-19');
+    gameBoard.style.removeProperty('background');
+
+    if (mat) {
+        if (mat.isImage) {
+            gameBoard.classList.add(`mat-equipped-${mat.id}`);
+        } else {
+            gameBoard.style.background = mat.style;
+        }
+    }
+    if (card && !card.isImage) {
+        document.documentElement.style.setProperty('--card-style', card.style);
+    }
+}
+
+function populateSettingsSelects() {
+    const cardSel = document.getElementById('select-card'); const matSel = document.getElementById('select-mat'); 
+    cardSel.innerHTML = ""; matSel.innerHTML = "";
+    userData.unlockedCards.forEach(id => { const item = shopItems.cards.find(i => i.id === id); cardSel.innerHTML += `<option value="${id}">${item.name}</option>`; });
+    userData.unlockedMats.forEach(id => { const item = shopItems.mats.find(i => i.id === id); matSel.innerHTML += `<option value="${id}">${item.name}</option>`; });
+    syncSelectsValues();
+}
+
+function syncSelectsValues() {
+    document.getElementById('select-card').value = userData.equippedCard;
+    document.getElementById('select-mat').value = userData.equippedMat;
+}
+
+let currentShopTab = 'cards';
+function renderShop(tab) {
+    currentShopTab = tab;
+    const container = document.getElementById('shop-items-container'); container.innerHTML = ""; const items = shopItems[tab]; const unlockedList = tab === 'cards' ? userData.unlockedCards : userData.unlockedMats; const equippedId = tab === 'cards' ? userData.equippedCard : userData.equippedMat;
+    items.forEach(item => {
+        const isUnlocked = unlockedList.includes(item.id); const isEquipped = item.id === equippedId; let btnText = isUnlocked ? "所有済み" : `💰 ${item.price}`; if (isEquipped) btnText = "装備中";
+        const div = document.createElement('div'); div.className = `shop-item ${isEquipped ? 'equipped' : ''}`;
+        
+        let previewStyle = ""; let previewClass = "";
+        if (tab === 'cards') {
+            if (item.isImage) {
+                previewClass = `card npc-card card-equipped-${item.id}`;
+                previewStyle = `width:30px; height:40px; margin:5px auto; border-radius:3px; border:1px solid #666; font-size:0; margin-left:auto;`;
+            } else {
+                previewStyle = `background: ${item.style}; width:30px; height:40px; margin:5px auto; border-radius:3px;`;
+            }
+        } else {
+            if (item.isImage) {
+                if(item.id === 18) previewStyle = `background-image: url('マット/成歩堂②.jpg'); background-size: contain; background-repeat: no-repeat; background-position: center; width:100%; height:20px; margin:5px 0; border-radius:3px; border:1px solid #666; background-color:#222;`;
+                if(item.id === 19) previewStyle = `background-image: url('マット/御剣.jpg'); background-size: contain; background-repeat: no-repeat; background-position: center; width:100%; height:20px; margin:5px 0; border-radius:3px; border:1px solid #666; background-color:#222;`;
+            } else {
+                previewStyle = `background: ${item.style}; width:100%; height:15px; margin:5px 0; border-radius:3px;`;
+            }
+        }
+        
+        div.innerHTML = `<div style="font-size:12px; font-weight:bold; height:32px; overflow:hidden;">${item.name}</div><div class="${previewClass}" style="${previewStyle}"></div><button style="font-size:11px; padding:5px; width:100%;" onclick="buyOrEquip('${tab}', ${item.id}, ${item.price}, ${isUnlocked})" ${isEquipped?'disabled':''}>${btnText}</button>`;
+        container.appendChild(div);
+    });
+}
+
+function buyOrEquip(tab, id, price, isUnlocked) { 
+    if (isUnlocked) { equipItem(tab, id); } else { 
+        if (userData.coins >= price) { 
+            userData.coins -= price; playSound('seCoin'); 
+            if (tab === 'cards') userData.unlockedCards.push(id); else userData.unlockedMats.push(id); 
+            populateSettingsSelects(); equipItem(tab, id); 
+        } else { alert("コインが足りません！"); } 
+    } 
+    renderShop(tab); 
+}
+
+function equipItem(tab, id) { 
+    id = parseInt(id); if (tab === 'cards') userData.equippedCard = id; else userData.equippedMat = id; 
+    saveData(); applyEquippedStyles(); syncSelectsValues(); 
+    if(document.getElementById('shop-screen').classList.contains('active-screen')) renderShop(tab);
+}
+
+// --- ゲームロジック ---
+let gameState = { mode: 'baba', turn: 1, players: [[],[],[],[]], rankings: [], activePlayer: 0 };
+
+function startGame(mode) {
+    gameState.mode = mode; gameState.turn = 1; gameState.rankings = []; gameState.activePlayer = 0;
+    document.getElementById('game-mode-title').innerText = mode.toUpperCase().replace('-', ' ');
+    document.getElementById('turn-counter').innerText = `ターン: ${gameState.turn}`;
+    openScreen('game-screen');
+
+    let deck = []; const suits = [{ mark: '💖', isRed: true }, { mark: '♦', isRed: true }, { mark: '♠', isRed: false }, { mark: '♣', isRed: false }];
+    for(let i=1; i<=13; i++) { suits.forEach(s => { deck.push({ suit: s.mark, num: i, isRed: s.isRed }); }); }
+    if (mode.includes('jiji')) { const ripIndex = Math.floor(Math.random() * deck.length); deck.splice(ripIndex, 1); } else { deck.push({ suit: '🃏', num: 0, isRed: false }); }
+    deck.sort(() => Math.random() - 0.5);
+
+    gameState.players = [[], [], [], []];
+    while(deck.length > 0) { for(let p=0; p<4; p++) { if(deck.length > 0) gameState.players[p].push(deck.pop()); } }
+    for(let p=0; p<4; p++) gameState.players[p] = discardPairs(gameState.players[p]);
+
+    playSound('seCard'); logMessage("ゲーム開始！同じ数字のペアを自動で捨てました。あなたの番です！");
+    checkRankings(); renderBoard();
+}
+
+function discardPairs(hand) {
+    let toDiscard = new Set();
+    for (let i = 0; i < hand.length; i++) {
+        if (hand[i].num === 0 || toDiscard.has(i)) continue;
+        for (let j = i + 1; j < hand.length; j++) {
+            if (hand[j].num === 0 || toDiscard.has(j)) continue;
+            if (hand[i].num === hand[j].num) { toDiscard.add(i); toDiscard.add(j); break; }
+        }
+    }
+    return hand.filter((_, idx) => !toDiscard.has(idx));
+}
+
+function logMessage(msg) { document.getElementById('game-info-log').innerText = msg; }
+
+function renderBoard() {
+    document.getElementById('turn-counter').innerText = `ターン: ${gameState.turn}`;
+    for(let p=0; p<4; p++) {
+        const handDiv = document.getElementById(`player-${p}-hand`); handDiv.innerHTML = "";
+        if (gameState.rankings.includes(p)) {
+            handDiv.innerHTML = `<span style="color:#ffd700; font-weight:bold; font-size:15px;">👑 ${gameState.rankings.indexOf(p)+1}位 あがり</span>`; continue;
+        }
+        gameState.players[p].forEach((card, idx) => {
+            const cardEl = document.createElement('div'); cardEl.className = "card";
+            if (p === 0) {
+                if (card.num === 0) { cardEl.classList.add('card-joker'); } else {
+                    cardEl.innerHTML = `<div style="font-size:11px; line-height:1;">${card.suit}</div><div style="font-size:13px; font-weight:900; line-height:1; margin-top:1px;">${card.num}</div>`;
+                    cardEl.classList.add(card.isRed ? 'card-red' : 'card-black');
+                }
+            } else {
+                cardEl.classList.add('npc-card');
+                if (userData.equippedCard === 18 || userData.equippedCard === 19) cardEl.classList.add(`card-equipped-${userData.equippedCard}`);
+                const targetNPC = getNextTarget(0);
+                if (gameState.activePlayer === 0 && p === targetNPC && !gameState.rankings.includes(0)) {
+                    cardEl.style.cursor = "pointer"; cardEl.onclick = () => playerDraw(p, idx);
+                }
+            }
+            handDiv.appendChild(cardEl);
+        });
+    }
+}
+
+function getNextTarget(currentPlayer) {
+    let target = (currentPlayer + 1) % 4;
+    while (gameState.rankings.includes(target) && target !== currentPlayer) { target = (target + 1) % 4; }
+    return target;
+}
+
+function playerDraw(npcId, cardIdx) {
+    if (gameState.activePlayer !== 0 || gameState.rankings.includes(0)) return;
+    playSound('seCard'); const drawnCard = gameState.players[npcId].splice(cardIdx, 1)[0]; gameState.players[0].push(drawnCard);
+    logMessage(`NPC ${npcId} からカードを1枚引きました。`); renderBoard();
+    setTimeout(() => {
+        const beforeLen = gameState.players[0].length; gameState.players[0] = discardPairs(gameState.players[0]);
+        if (gameState.players[0].length < beforeLen) { logMessage(`数字が揃いました！ペアを捨てます。`); playSound('seCoin'); }
+        checkRankings(); renderBoard();
+        if (gameFinished()) { endGame(); } else { goToNextNPC(); }
+    }, 600);
+}
+
+function npcTurnLoop() {
+    if (gameFinished()) { endGame(); return; }
+    let p = gameState.activePlayer; if (gameState.rankings.includes(p)) { goToNextNPC(); return; }
+    let target = getNextTarget(p); if (target === p || gameState.players[p].length === 0) { goToNextNPC(); return; }
+    playSound('seCard'); const randIdx = Math.floor(Math.random() * gameState.players[target].length); const drawnCard = gameState.players[target].splice(randIdx, 1)[0]; gameState.players[p].push(drawnCard);
+    logMessage(`NPC ${p} が ${target===0?'あなた':'NPC '+target} から1枚引しました。`); renderBoard();
+    setTimeout(() => {
+        gameState.players[p] = discardPairs(gameState.players[p]); checkRankings(); renderBoard();
+        if (gameFinished()) { endGame(); } else { goToNextNPC(); }
+    }, 600);
+}
+
+function goToNextNPC() {
+    if (gameFinished()) { endGame(); return; }
+    let nextPlayer = (gameState.activePlayer + 1) % 4;
+    while (gameState.rankings.includes(nextPlayer)) { if (nextPlayer === gameState.activePlayer) break; nextPlayer = (nextPlayer + 1) % 4; }
+    if (nextPlayer === 0 && gameState.activePlayer !== 0) {
+        gameState.turn++; gameState.activePlayer = nextPlayer;
+        if (gameState.mode.includes('shuffle') && gameState.turn % 2 === 0) { setTimeout(triggerShuffleRule, 1000); return; }
+    } else { gameState.activePlayer = nextPlayer; }
+    if (gameState.activePlayer === 0 && gameState.rankings.includes(0)) { setTimeout(goToNextNPC, 500); } 
+    else if (gameState.activePlayer === 0) { logMessage("あなたの番です！隣のNPCからカードを引いてください。"); renderBoard(); } 
+    else { setTimeout(npcTurnLoop, 1200); }
+}
+
+function triggerShuffleRule() {
+    if (gameFinished()) { endGame(); return; }
+    const container = document.getElementById('app-container'); container.classList.add('shake-anim'); setTimeout(() => container.classList.remove('shake-anim'), 500);
+    logMessage("🚨 シャッフルタイム！全員からランダムに1枚ずつ回収されます！");
+    let pool = []; let participants = [];
+    for (let p=0; p<4; p++) {
+        if (!gameState.rankings.includes(p) && gameState.players[p].length > 0) {
+            let randIdx = Math.floor(Math.random() * gameState.players[p].length); let card = gameState.players[p].splice(randIdx, 1)[0]; pool.push(card); participants.push(p);
+        }
+    }
+    pool.sort(() => Math.random() - 0.5);
+    participants.forEach((p, index) => { gameState.players[p].push(pool[index]); gameState.players[p] = discardPairs(gameState.players[p]); });
+    playSound('seCoin'); logMessage("シャッフル完了！手札が再配布されました。"); checkRankings(); renderBoard();
+    if (gameFinished()) { endGame(); } else {
+        if (gameState.rankings.includes(gameState.activePlayer)) { goToNextNPC(); }
+        else if (gameState.activePlayer === 0) { logMessage("あなたの番です！隣のNPCからカードを引いてください。"); }
+        else { setTimeout(npcTurnLoop, 1200); }
+    }
+}
+
+function checkRankings() {
+    for (let p=0; p<4; p++) {
+        if (!gameState.rankings.includes(p) && gameState.players[p].length === 0) {
+            gameState.rankings.push(p); logMessage(`${p === 0 ? 'あなた' : 'NPC ' + p} があがりました！`);
+        }
+    }
+    if (gameState.rankings.length === 3) { for(let p=0; p<4; p++) { if(!gameState.rankings.includes(p)) gameState.rankings.push(p); } }
+}
+function gameFinished() { return gameState.rankings.length >= 4; }
+function endGame() {
+    renderBoard(); const myRank = gameState.rankings.indexOf(0) + 1; let earnedCoins = 10; let seType = 'seRank4';
+    if (myRank === 1) { earnedCoins = 80; seType = 'seRank1'; } else if (myRank === 2) { earnedCoins = 50; seType = 'seRank23'; } else if (myRank === 3) { earnedCoins = 30; seType = 'seRank23'; }
+    userData.coins += earnedCoins; saveData(); playSound(seType);
+    setTimeout(() => { alert(`ゲーム終了！\nあなたの順位: ${myRank}位\n獲得コイン: ${earnedCoins}枚💰`); openScreen('home-screen'); }, 800);
+}
+function quitGame() { if(confirm("ゲームを終了してホームに戻りますか？")) { openScreen('home-screen'); } }
+window.onload = initApp;
+</script>
+</body>
+</html>
